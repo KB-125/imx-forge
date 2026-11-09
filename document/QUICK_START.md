@@ -319,16 +319,23 @@ Copyright (C) 2025 Free Software Foundation, Inc.
 
 ### 克隆项目
 
-IMX-Forge 使用 Git Submodule 管理第三方源码，需要使用 `--recurse-submodules` 参数：
+IMX-Forge 使用 Git Submodule 管理第三方源码，克隆后需要把子模块初始化到锁定 commit：
 
 ```bash
-# 克隆项目并初始化子模块
+# 方式一：GitHub / kernel.org 访问稳定时
 git clone --recurse-submodules https://github.com/Awesome-Embedded-Learning-Studio/imx-forge.git
 
-# 或如果已经克隆，更新子模块
+# 方式二（国内网络推荐）：先克隆项目本体，再用国内镜像初始化子模块
+git clone https://github.com/Awesome-Embedded-Learning-Studio/imx-forge.git
 cd imx-forge
-git submodule update --init --recursive
+bash document/development/setup-submodules.sh
 ```
+
+::: tip 国内网络 / 克隆卡住？
+GitHub、git.kernel.org 直连不稳定时，`--recurse-submodules` 很容易卡在 QEMU 的 `roms/*`（gitlab.com）。
+方式二会从 `ghfast.top` / TUNA 等镜像拉取，并自动对齐到锁定 commit；已经克隆过项目的话，直接运行脚本即可。
+详见 [子模块拉取指南](development/SUBMODULE_SETUP.md)。
+:::
 
 ### 项目结构
 
@@ -868,12 +875,15 @@ ping 192.168.1.100  # 替换为开发板 IP
 
 **解决方法**:
 ```bash
-# 方法一：递归初始化
-git submodule update --init --recursive
+# 推荐：用国内镜像脚本初始化/修复（自动对齐锁定 commit，不递归 QEMU roms）
+bash document/development/setup-submodules.sh
 
-# 方法二：单独初始化某个模块（<name> 换成 linux_mainline / uboot-mainline 等）
+# 或单独初始化某个模块（<name> 换成 linux_mainline / uboot-mainline 等）
 git submodule update --init third_party/<name>
 ```
+
+> 国内网络不要用 `--recursive`：它会把 QEMU 的 `roms/*` 嵌套子模块（gitlab.com）也拉下来，几乎必卡。
+> 完整说明见 [子模块拉取指南](development/SUBMODULE_SETUP.md)。
 
 > ⚠️ **不要使用 `git submodule update --remote`**：它会把子模块拉到上游最新代码，
 > 偏离本仓库锁定的 commit，导致 `patches/` 里的补丁打不上——表现就是

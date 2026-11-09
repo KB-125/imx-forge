@@ -6,6 +6,7 @@ title: 开发指南
 
 <ChapterNav variant="sub">
   <ChapterLink href="ENVIRONMENT_SETUP.md" variant="sub">环境搭建 —— 开发环境配置</ChapterLink>
+  <ChapterLink href="SUBMODULE_SETUP.md" variant="sub">子模块拉取 —— 国内网络镜像与修复</ChapterLink>
 </ChapterNav>
 
 ::: info 开发环境要求
