@@ -49,8 +49,9 @@ export default defineProject({
       {
         text: '系统构建',
         link: '/tutorial/system-build/',
-        activeMatch: '^/tutorial/(system-build|start|uboot|kernel|rootfs|buildroot|practical)/',
+        activeMatch: '^/tutorial/(system-build|hardware|start|uboot|kernel|rootfs|buildroot|practical)/',
         items: [
+          { text: '硬件与启动原理', link: '/tutorial/hardware/' },
           { text: '入门准备', link: '/tutorial/start/' },
           { text: 'U-Boot 移植', link: '/tutorial/uboot/' },
           { text: '内核移植', link: '/tutorial/kernel/' },
@@ -165,7 +166,7 @@ export default defineProject({
       {
         slug: 'system-build',
         title: '系统构建',
-        dirs: ['start', 'uboot', 'kernel', 'rootfs', 'buildroot', 'practical'],
+        dirs: ['hardware', 'start', 'uboot', 'kernel', 'rootfs', 'buildroot', 'practical'],
       },
       { slug: 'driver-dev', title: '驱动与实战', dirs: ['driver', 'project'] },
       { slug: 'emulation', title: '模拟与调试', dirs: ['emu', 'debug'] },

@@ -6,9 +6,10 @@ title: 系统构建
 
 ## 这个分区的顺序
 
-这是整站的主线,六步环环相扣。前一步的产物是后一步的输入,不建议跳序。
+这是整站的主线。第 00 步先讲硬件与启动原理,再进入六步构建;前一步的产物是后一步的输入,不建议跳序。
 
 <ChapterNav>
+  <ChapterLink num="00" href="../hardware/">硬件与启动原理</ChapterLink>
   <ChapterLink num="01" href="../start/">入门准备</ChapterLink>
   <ChapterLink num="02" href="../uboot/">U-Boot 移植</ChapterLink>
   <ChapterLink num="03" href="../kernel/">内核移植</ChapterLink>
@@ -16,6 +17,10 @@ title: 系统构建
   <ChapterLink num="05" href="../buildroot/">Buildroot 构建</ChapterLink>
   <ChapterLink num="06" href="../practical/">实战演练</ChapterLink>
 </ChapterNav>
+
+### 00 硬件与启动原理（可选前置）
+
+芯片全景与内存映射、Boot ROM/IVT/DCD、DDR 与 MMDC、时钟与电源、引脚复用、SD/eMMC、串口与显示。想先弄明白"为什么这么配"再动手,从这里开始;急着跑通可以跳过,遇到问题再回来查。
 
 ### 01 入门准备
 

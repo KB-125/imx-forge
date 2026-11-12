@@ -9,7 +9,7 @@ title: 教程
 <ChapterNav>
   <ChapterLink num="1" href="getting-started/">快速上手 —— 三条最短路径,先跑起来再说</ChapterLink>
   <ChapterLink num="2" href="foundations/">环境与基础 —— Linux 底子 + 一套开箱即用的开发环境</ChapterLink>
-  <ChapterLink num="3" href="system-build/">系统构建 —— 工具链 → U-Boot → 内核 → rootfs → Buildroot → 整机启动</ChapterLink>
+  <ChapterLink num="3" href="system-build/">系统构建 —— 硬件原理 → 工具链 → U-Boot → 内核 → rootfs → 整机启动</ChapterLink>
   <ChapterLink num="4" href="driver-dev/">驱动与实战 —— 字符设备到板级外设,收口到产品级项目</ChapterLink>
   <ChapterLink num="5" href="emulation/">模拟与调试 —— 没有板子怎么跑,跑不通怎么查</ChapterLink>
   <ChapterLink num="6" href="flashing/">烧录与进阶 —— 镜像写进卡或 eMMC,构建流程工程化</ChapterLink>
