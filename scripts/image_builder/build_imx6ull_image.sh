@@ -40,6 +40,17 @@ BOOT_START_MB=16
 KEEP_WORKDIR=0
 WORK_DIR=""
 
+# Autoboot support: U-Boot loads /boot.scr from the boot partition and the
+# pre-baked environment removes the "bad CRC, using default environment"
+# fallback on first boot.
+MKIMAGE="${MKIMAGE:-${PROJECT_ROOT}/out/uboot/tools/mkimage}"
+UBOOT_ELF="${UBOOT_ELF:-${PROJECT_ROOT}/out/uboot/u-boot}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+ENV_OFFSET_KB=4096
+ENV_SIZE_BYTES=8192
+HAVE_AUTOBOOT_TOOLS=0
+ENV_IMAGE=""
+
 show_usage() {
     cat << EOF
 Usage: $0 [OPTIONS]
@@ -247,6 +258,13 @@ resolve_artifacts() {
 
     IMAGES_DIR="${RELEASE_DIR}/images"
     OUTPUT_IMAGE="${IMAGES_DIR}/${IMAGE_NAME}"
+
+    if [[ -x "${MKIMAGE}" && -f "${UBOOT_ELF}" ]] && command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+        HAVE_AUTOBOOT_TOOLS=1
+    else
+        HAVE_AUTOBOOT_TOOLS=0
+        log_warn "mkimage/python3/U-Boot ELF not available (${MKIMAGE}, ${UBOOT_ELF}); skipping /boot.scr and environment image"
+    fi
 }
 
 calculate_layout() {
@@ -316,9 +334,65 @@ create_boot_tree() {
     cat > "${boot_dir}/boot.cmd" << EOF
 setenv bootargs console=ttymxc0,115200 root=${LINUX_ROOT_DEV} rootwait rw
 ext4load mmc ${UBOOT_MMC_DEV}:1 \${loadaddr} /zImage
-ext4load mmc ${UBOOT_MMC_DEV}:1 \${fdt_addr_r} /${dtb_file}
-bootz \${loadaddr} - \${fdt_addr_r}
+ext4load mmc ${UBOOT_MMC_DEV}:1 \${fdt_addr} /${dtb_file}
+bootz \${loadaddr} - \${fdt_addr}
 EOF
+
+    if [[ "${HAVE_AUTOBOOT_TOOLS}" -eq 1 ]]; then
+        log_cmd "mkimage -T script -> ${boot_dir}/boot.scr"
+        "${MKIMAGE}" -A arm -O linux -T script -C none \
+            -n "i.MX6ULL AES boot script" \
+            -d "${boot_dir}/boot.cmd" "${boot_dir}/boot.scr" >/dev/null
+        cp "${boot_dir}/boot.scr" "${boot_dir}/boot/boot.scr"
+        cp "${boot_dir}/boot.cmd" "${boot_dir}/boot/boot.cmd"
+    else
+        log_warn "U-Boot mkimage not found; /boot.scr is not generated (manual boot only)"
+    fi
+}
+
+create_env_image() {
+    local env_bin="$1"
+
+    log_cmd "extract default environment from ${UBOOT_ELF} -> ${env_bin}"
+    "${PYTHON_BIN}" - "${UBOOT_ELF}" "${env_bin}" "${ENV_SIZE_BYTES}" <<'ENV_PY'
+import struct
+import subprocess
+import sys
+import zlib
+
+elf, out, size = sys.argv[1], sys.argv[2], int(sys.argv[3])
+
+sym = None
+for line in subprocess.check_output(["readelf", "-sW", elf], text=True).splitlines():
+    parts = line.split()
+    if len(parts) >= 8 and parts[7] == "default_environment":
+        sym = (int(parts[1], 16), int(parts[2]))
+        break
+if sym is None:
+    sys.exit("default_environment symbol not found in %s" % elf)
+addr, length = sym
+
+off = None
+for line in subprocess.check_output(["readelf", "-lW", elf], text=True).splitlines():
+    parts = line.split()
+    if len(parts) >= 6 and parts[0] == "LOAD":
+        poff, vaddr, filesz = int(parts[1], 16), int(parts[2], 16), int(parts[4], 16)
+        if vaddr <= addr < vaddr + filesz:
+            off = poff + (addr - vaddr)
+            break
+if off is None:
+    sys.exit("no LOAD segment covers default_environment")
+
+with open(elf, "rb") as fh:
+    fh.seek(off)
+    blob = fh.read(length)
+if b"bootcmd=" not in blob:
+    sys.exit("default environment does not look like key=value pairs")
+
+data = blob + b"\x00" * (size - 4 - len(blob))
+with open(out, "wb") as fh:
+    fh.write(struct.pack("<I", zlib.crc32(data) & 0xFFFFFFFF) + data)
+ENV_PY
 }
 
 create_partition_fs() {
@@ -353,6 +427,11 @@ write_image_payloads() {
 
     log_cmd "dd U-Boot to ${image} at ${UBOOT_OFFSET_KB} KiB"
     dd if="${UBOOT_IMAGE}" of="${image}" bs=1K seek="${UBOOT_OFFSET_KB}" conv=notrunc status=none
+
+    if [[ -n "${ENV_IMAGE}" && -f "${ENV_IMAGE}" ]]; then
+        log_cmd "dd U-Boot environment to ${image} at ${ENV_OFFSET_KB} KiB"
+        dd if="${ENV_IMAGE}" of="${image}" bs=1K seek="${ENV_OFFSET_KB}" conv=notrunc status=none
+    fi
 
     log_cmd "dd boot partition to sector ${BOOT_START_SECTOR}"
     dd if="${boot_fs}" of="${image}" bs=512 seek="${BOOT_START_SECTOR}" conv=notrunc status=none
@@ -392,12 +471,23 @@ boot_files:
   /boot/zImage
   /boot/${dtb_file}
   /boot.cmd
+  /boot.scr
+
+environment:
+  offset_kib=${ENV_OFFSET_KB}
+  size_bytes=${ENV_SIZE_BYTES}
+  source=default environment extracted from the U-Boot ELF, CRC fixed up
+  content=bootcmd loads /boot.scr from mmc 1:1 (emmc) or mmc 0:1 (sd) and sources it
+
+autoboot:
+  CONFIG_BOOTDELAY=2
+  CONFIG_BOOTCOMMAND=same as the baked environment bootcmd
 
 manual_uboot_boot:
   setenv bootargs console=ttymxc0,115200 root=${LINUX_ROOT_DEV} rootwait rw
   ext4load mmc ${UBOOT_MMC_DEV}:1 \${loadaddr} /zImage
-  ext4load mmc ${UBOOT_MMC_DEV}:1 \${fdt_addr_r} /${dtb_file}
-  bootz \${loadaddr} - \${fdt_addr_r}
+  ext4load mmc ${UBOOT_MMC_DEV}:1 \${fdt_addr} /${dtb_file}
+  bootz \${loadaddr} - \${fdt_addr}
 EOF
 
     if command -v sha256sum >/dev/null 2>&1; then
@@ -449,6 +539,10 @@ main() {
     log_info "========================================="
 
     create_boot_tree "${boot_dir}"
+    if [[ "${HAVE_AUTOBOOT_TOOLS}" -eq 1 ]]; then
+        ENV_IMAGE="${WORK_DIR}/env.bin"
+        create_env_image "${ENV_IMAGE}"
+    fi
     create_partition_fs "${boot_dir}" "BOOT" "${BOOT_SIZE_MB}" "${boot_fs}"
     create_partition_fs "${ROOTFS_DIR}" "ROOTFS" "${ROOTFS_SIZE_MB}" "${rootfs_fs}"
     write_partition_table "${tmp_image}"

@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000027 Mon Sep 17 00:00:00 2001
+From: Li Yiming <liyiming@localhost>
+Date: Fri, 13 Nov 2026 02:20:00 +0800
+Subject: [PATCH] hw/arm: fsl-imx6ul: Program the generic timer at 8 MHz
+
+The i.MX6UL/6ULL system counter runs at 8 MHz.  U-Boot's syscounter
+driver programmes CNTFRQ with that rate (CFG_SC_TIMER_CLK) and converts
+every tick to microseconds using the value read back from CNTFRQ.
+
+QEMU implements CNTFRQ as reads-as-written while the counter itself
+advances at cpu->gt_cntfrq_hz.  For Cortex-A7 that is the backwards
+compatible 62.5 MHz, so the value U-Boot reads back (8 MHz) does not
+match the rate the counter actually ticks at.  The resulting timebase
+runs 7.8x fast: U-Boot reports "9260808 bytes read in 15883 ms" for a
+2 second transfer, cyclic callbacks trip their watchdog thresholds and
+the boot delay elapses eight times too quickly.
+
+Set the CPU "cntfrq" property before realize so the counter and the
+value the guest reads agree, as they do on the real SoC.
+
+Signed-off-by: Li Yiming <liyiming@localhost>
+---
+ hw/arm/fsl-imx6ul.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/hw/arm/fsl-imx6ul.c b/hw/arm/fsl-imx6ul.c
+--- a/hw/arm/fsl-imx6ul.c
++++ b/hw/arm/fsl-imx6ul.c
+@@ -244,6 +244,13 @@
+         return;
+     }
+ 
++    /*
++     * The i.MX system counter runs at 8 MHz.  U-Boot programs CNTFRQ with
++     * that rate and derives every timeout from it, so the CPU's generic
++     * timer must tick at the same frequency instead of QEMU's default.
++     */
++    qdev_prop_set_uint64(DEVICE(&s->cpu), "cntfrq", 8000000);
++
+     qdev_realize(DEVICE(&s->cpu), NULL, &error_abort);
+ 
+     /*
+-- 
+2.43.0

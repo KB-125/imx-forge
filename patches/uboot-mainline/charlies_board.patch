@@ -1580,10 +1580,10 @@ index 00000000..812088d1
 +#include <asm/arch/mx6_plugin.S>
 diff --git a/configs/mx6ull_aes_emmc_defconfig b/configs/mx6ull_aes_emmc_defconfig
 new file mode 100644
-index 00000000..1a224bd6
+index 00000000..af3f2495
 --- /dev/null
 +++ b/configs/mx6ull_aes_emmc_defconfig
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,106 @@
 +CONFIG_ARM=y
 +CONFIG_ARCH_MX6=y
 +CONFIG_SYS_MALLOC_LEN=0x1000000
@@ -1599,9 +1599,9 @@ index 00000000..1a224bd6
 +CONFIG_SYS_MEMTEST_START=0x80000000
 +CONFIG_SYS_MEMTEST_END=0x88000000
 +CONFIG_SUPPORT_RAW_INITRD=y
-+CONFIG_BOOTDELAY=-1
++CONFIG_BOOTDELAY=2
 +CONFIG_USE_BOOTCOMMAND=y
-+CONFIG_BOOTCOMMAND="echo Current do not autoboot"
++CONFIG_BOOTCOMMAND="if ext4load mmc 1:1 ${loadaddr} /boot.scr; then source ${loadaddr}; else if ext4load mmc 0:1 ${loadaddr} /boot.scr; then source ${loadaddr}; fi; fi"
 +CONFIG_SYS_PBSIZE=532
 +# CONFIG_CONSOLE_MUX is not set
 +CONFIG_SYS_CONSOLE_IS_IN_ENV=y
@@ -1609,6 +1609,7 @@ index 00000000..1a224bd6
 +CONFIG_HUSH_PARSER=y
 +CONFIG_SYS_MAXARGS=32
 +CONFIG_CMD_BOOTZ=y
++CONFIG_CMD_SOURCE=y
 +CONFIG_CRC32_VERIFY=y
 +CONFIG_CMD_MEMTEST=y
 +CONFIG_CMD_GPIO=y
@@ -1691,10 +1692,10 @@ index 00000000..1a224bd6
 +CONFIG_BMP_32BPP=y
 diff --git a/include/configs/mx6ull_aes_emmc.h b/include/configs/mx6ull_aes_emmc.h
 new file mode 100644
-index 00000000..384b0921
+index 00000000..8c5c1809
 --- /dev/null
 +++ b/include/configs/mx6ull_aes_emmc.h
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,143 @@
 +/* SPDX-License-Identifier: GPL-2.0+ */
 +/*
 + * Copyright (C) 2016 Freescale Semiconductor, Inc.
@@ -1750,6 +1751,7 @@ index 00000000..384b0921
 +	"console=ttymxc0\0" \
 +	"fdt_high=0xffffffff\0" \
 +	"initrd_high=0xffffffff\0" \
++	"loadaddr=0x82000000\0" \
 +	"fdt_file=imx6ull-aes.dtb\0" \
 +	"fdt_addr=0x83000000\0" \
 +	"boot_fdt=try\0" \

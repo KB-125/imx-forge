@@ -283,7 +283,7 @@ bin dev etc home lib lib32 linuxrc media mnt opt proc root run sbin sys tmp usr 
 reboot: Power down
 ```
 
-- 串口在 U-Boot 阶段 <1 s 出 banner；zImage 的 9.26 MB 经 U-Boot ext4 读取耗时约 14.8 s（612 KiB/s），内核从 `Starting kernel` 到 `buildroot login:` 约 6 s，整链约 25–30 s。
+- 串口在 U-Boot 阶段 <1 s 出 banner；zImage 的 9.26 MB 经 U-Boot ext4 读取约 2.0 s（4.4 MiB/s，见 5.6 的计时修复），内核从 `Starting kernel` 到 `buildroot login:` 约 6 s，整链约 19–20 s。
 - 登录后 `uname -a`、`ls /`、`poweroff -f` 均正常，`poweroff` 能干净退出 QEMU（rc=0）。
 - 内核启动期间的外设探测失败（`mxs-dma -110`、`spi-nor -110`、`Goodix-TS -110`、`pxp -110`、`mxs-dcp -110`、`wm8960 -22`、`imx_thermal -EINVAL`、`ocotp regmap` 缺失）与既有调研笔记一致，属于 QEMU 模型缺口，不影响启动链。
 
@@ -296,7 +296,56 @@ reboot: Power down
 | R3 | 板级 dts 无 `aliases`，mmc 编号靠探测顺序 | 实测为 0=USDHC1、1=USDHC2，符合预期 |
 | R4 | 新 U-Boot 访问 WDOG/GPC/SRC 未建模寄存器挂死 | 未触发 |
 | R5 | 内核 dts 与 QEMU 模型不符 | 待内核启动后确认；必要时先用 EVK dtb 对照 |
-| R6 | LCD 相关 cyclic 告警影响启动时序 | 仅告警，观察 |
+| R6 | LCD 相关 cyclic 告警影响启动时序 | 已随 5.6 的计时修复消失：告警源于时间基准快 7.8 倍，而非 LCD 本身 |
+
+### 5.6 自动启动、环境区与计时修复
+
+三项遗留改进（自动启动、环境区固化、读取偏慢）已全部落地，并用无人值守启动验证：从 QEMU 冷启动到 `buildroot login:` 约 19–20 s，全程无需手工输入。
+
+#### 5.6.1 计时 7.8 倍偏差（“读取偏慢”的真相）
+
+现象：`ext4load` 读 9.26 MB 打印 `15883 ms (569.3 KiB/s)`，但墙钟只有约 2.0 s；同时 `cyclic function video_idle took too long: 11765us vs 5000us max` 的告警也不合理。
+
+根因链：
+- U-Boot 用 `CONFIG_SYSCOUNTER_TIMER=y`（`arch/arm/mach-imx/syscounter.c`），时间基准来自 ARM generic timer；
+- `timer_init()` 用 `mcr p15, 0, %0, c14, c0, 0` 把 `CNTFRQ` 写成 `CFG_SC_TIMER_CLK`（`include/configs/mx6_common.h:12` = 8 MHz），`get_tbclk()` 再用 `mrc` 读回；
+- QEMU 的 `CNTFRQ` 是 reads-as-written（`target/arm/helper.c:2066-2078`），而计数器实际速率由 `cpu->gt_cntfrq_hz` 决定；Cortex-A7 走 `ARM_FEATURE_BACKCOMPAT_CNTFRQ`，默认 62.5 MHz；
+- 62.5 / 8 = 7.8125，与观测到的 15883 / 2040 ≈ 7.79 一致。于是 U-Boot 的 `get_timer()`、bootdelay、cyclic 阈值全部快约 7.8 倍。
+
+修复：新增 `patches/qemu/0027-hw-arm-fsl-imx6ul-Program-the-generic-timer-at-8-MHz.patch`，在 `hw/arm/fsl-imx6ul.c` 的 CPU realize 之前执行 `qdev_prop_set_uint64(DEVICE(&s->cpu), "cntfrq", 8000000);`，让计数器与 guest 读到的 CNTFRQ 一致。重建后同一镜像打印 `9260808 bytes read in 2004 ms (4.4 MiB/s)`，与墙钟吻合；`video_idle took too long` 告警也消失。实测吞吐约 4.4–4.6 MiB/s（受 SD 模型与 ext4 限制），读取本身并不慢。
+
+#### 5.6.2 自动启动
+
+- `configs/mx6ull_aes_emmc_defconfig`：`CONFIG_BOOTDELAY=2`；`CONFIG_BOOTCOMMAND="if ext4load mmc 1:1 ${loadaddr} /boot.scr; then source ${loadaddr}; else if ext4load mmc 0:1 ${loadaddr} /boot.scr; then source ${loadaddr}; fi; fi"`；显式 `CONFIG_CMD_SOURCE=y`。
+- 板级 `include/configs/mx6ull_aes_emmc.h` 增加 `"loadaddr=0x82000000\0"`。原先只定义了 `fdt_addr=0x83000000`，`loadaddr` 不存在，boot.scr 路径展开成空地址，实测会打印 `ext4load` 的 Usage。
+- `scripts/image_builder/build_imx6ull_image.sh`：用 `out/uboot/tools/mkimage -A arm -O linux -T script -C none` 把 `/boot.cmd` 编译成 `/boot.scr` 写入 p1（同时保留 `/boot/boot.cmd`），`boot.cmd` 的 FDT 变量同步改为 `${fdt_addr}`。
+
+#### 5.6.3 环境区固化
+
+`CONFIG_ENV_OFFSET=0x400000`、`CONFIG_ENV_SIZE=0x2000`。镜像脚本新增 `create_env_image()`：
+
+1. 用 `readelf -sW out/uboot/u-boot` 找到 `default_environment` 符号（0x878666bf，2770 字节，内含 `CONFIG_BOOTCOMMAND`）；
+2. 用 `readelf -lW` 把符号虚拟地址映射到 ELF 文件偏移；
+3. 取 2770 字节、补零到 8188 字节，前置 `zlib.crc32` 小端值，得到 8 KiB 合法环境镜像，dd 到镜像 0x400000。
+
+启动日志由 `bad CRC, using default environment` 变为 `Loading Environment from MMC... OK`。
+
+为什么不是用 `mkenvimage` 只写 `bootcmd`：U-Boot 从 MMC 导入环境时会整体替换默认环境，只写 `bootcmd` 会让 `loadaddr`/`fdt_addr` 等默认变量全部丢失（实测 `printenv loadaddr` → `not defined`，bootcmd 里 `${loadaddr}` 展开为空，`ext4load` 打印 Usage）。必须写入完整的默认环境。
+
+#### 5.6.4 验证
+
+```
+Loading Environment from MMC... OK
+Hit any key to stop autoboot: 2 ... 0
+258 bytes read in 2 ms
+9260808 bytes read in 2004 ms (4.4 MiB/s)
+35519 bytes read in 9 ms
+[    0.000000] Booting Linux on physical CPU 0x0
+...
+buildroot login:            # 全程无输入，约 19–20 s
+```
+
+改动文件：`patches/qemu/0027-*.patch`（QEMU 计时）、`scripts/image_builder/build_imx6ull_image.sh`（boot.scr + 环境镜像）、`patches/uboot-mainline/charlies_board.patch`（重新导出，含 defconfig 与头文件改动；已用干净 worktree 验证 13 个文件可应用、与工作区逐字节一致）。
 
 ## 6. 复现命令速查
 
@@ -325,19 +374,21 @@ out/qemu/build/qemu-system-arm -M mcimx6ul-evk -m 512M \
 ```
 
 > 注：`/tmp/fakebin/convert` 是 Pillow 写的 ImageMagick 垫片（把 logo PNG 转成 8bpp BMP），用于在无 root 机器上满足 `logo_helper.sh`；有 ImageMagick 的环境可忽略。
+>
+> 镜像脚本会自动生成 `/boot.scr` 与 8 KiB 环境区（`ENV_OFFSET=0x400000`），因此上面的启动命令无需再手工 `ext4load`/`bootz`；`--boot-media=sd` 时 bootcmd 会自动回退到 `mmc 0:1`。
 
 ## 7. 结论
 
-路线 A′ 已在 QEMU 上端到端跑通，且**没有修改 U-Boot 源码、没有额外 ram_size workaround**：
+路线 A′ 已在 QEMU 上端到端跑通，U-Boot 只改了板级 defconfig 与板级环境头文件，**没有 ram_size workaround**：
 
-1. QEMU v11.1.0 + 26 个补丁（项目 16 + 上游 U-Boot 启动链 10）编译通过；
+1. QEMU v11.1.0 + 27 个补丁（项目 16 + 上游 U-Boot 启动链 10 + 计时修复 1）编译通过；
 2. 无 boot ROM 的 QEMU 用 `-device loader` 直接启动 U-Boot proper，`DRAM: 512 MiB` 与 `-m 512M` 精确一致；
 3. U-Boot 从 USDHC2（`mmc 1`）的 ext4 分区读取 `zImage` + `imx6ull-aes.dtb`，`bootz` 成功；
 4. Linux 7.2.9 挂载同一 SD 卡的 p2 rootfs，busybox init 起 getty，`buildroot login:` 可登录并可 `poweroff` 干净退出。
 
-剩余可改进项（不阻塞启动链）：
+曾列入的三项遗留改进已在 5.6 全部完成：自动启动（`boot.scr` + 真实 `bootcmd`）、环境区固化（默认环境 + 正确 CRC）、读取“偏慢”（实为计时快 7.8 倍，已由 QEMU 补丁 0027 修正，真实吞吐约 4.4 MiB/s）。
 
-- U-Boot 每次启动都要手工下发 `ext4load`/`bootz`（`CONFIG_BOOTDELAY=-1` + 占位 `CONFIG_BOOTCOMMAND`），可在 p1 放 `boot.scr` 并由 `bootcmd` source，或把 `CONFIG_BOOTCOMMAND` 改成真实命令；
-- 扩展分区镜像的 U-Boot 环境区（`CONFIG_ENV_OFFSET=0x400000`）当前是空的，启动日志会提示 `bad CRC, using default environment`，可 `saveenv` 固化；
-- U-Boot ext4 读取约 612 KiB/s，明显偏慢，后续可查 SDMA 路径（上游 05–08 补丁已修边界与时钟门，但仍有优化空间）；
-- `cyclic function video_idle took too long` 告警来自 LCD 刷新，可调 `CONFIG_CYCLIC_MAX_CPU_TIME_US` 或关掉视频。
+仍未处理、但不影响启动链的项：
+
+- 内核启动期间的外设探测失败（mxs-dma / spi-nor / Goodix / pxp / dcp / wm8960 / imx_thermal）属于 QEMU 模型缺口；
+- SD 读取吞吐约 4.5 MiB/s，若要继续提速需改 QEMU sdhci 的 SDMA 实现，而不是 U-Boot。
