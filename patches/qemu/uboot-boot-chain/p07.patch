@@ -1,0 +1,75 @@
+U-Boot's i.MX uSDHC probe calls fsl_esdhc_init(), which resets the
+controller and programs INT_STATUS_EN. It then calls
+esdhc_init_common(), which issues a second RSTA and only clears the
+BRR/BWR status enables afterward.
+
+The generic SDHCI reset clears QEMU's normal and error status-enable
+fields. Consequently, the second RSTA removes command-complete,
+transfer-complete, DMA, and error enables. Commands still reach the
+card, but QEMU does not latch completion status, so U-Boot times out
+and fails to expose an MMC block device.
+
+Preserve the normal and error status-enable fields around RSTA in the
+i.MX uSDHC register path. Signal enables still follow the generic reset
+because U-Boot disables interrupt signaling and polls INT_STATUS.
+
+The IMX6ULRM describes RSTA as clearing read-write state and does not
+document INT_STATUS_EN as reset-persistent. Treat this as compatibility
+with U-Boot's established two-reset initialization sequence rather than
+as behavior directly specified by the reference manual.
+
+Signed-off-by: Bin Meng <bin.meng@processmission.com>
+---
+
+ hw/sd/sdhci.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/hw/sd/sdhci.c b/hw/sd/sdhci.c
+index 09aea733ba..2ee62847cb 100644
+--- a/hw/sd/sdhci.c
++++ b/hw/sd/sdhci.c
+@@ -1625,6 +1625,7 @@ static void sdhci_bus_class_init(ObjectClass *klass, const void *data)
+ #define ESDHC_TUNING_CTRL               0xcc
+ #define ESDHC_TUNE_CTRL_STATUS          0x68
+ #define ESDHC_WTMK_LVL                  0x44
++#define ESDHC_SYSCTL_RSTA               BIT(24)
+ 
+ /* Undocumented register used by guests working around erratum ERR004536 */
+ #define ESDHC_UNDOCUMENTED_REG27        0x6c
+@@ -1920,6 +1921,32 @@ usdhc_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
+         sdhci_write(opaque, offset, val | s->trnmod, size);
+         break;
+ 
++    case SDHC_CLKCON:
++        if (value & ESDHC_SYSCTL_RSTA) {
++            uint16_t norintstsen = s->norintstsen;
++            uint16_t errintstsen = s->errintstsen;
++
++            esdhc_write(opaque, offset, val, size);
++
++            /*
++             * U-Boot programs INT_STATUS_EN in fsl_esdhc_init(), then issues
++             * another RSTA from esdhc_init_common(). It only clears BRR/BWR
++             * after that reset and relies on the remaining enables while
++             * polling INT_STATUS for command, transfer, and error completion.
++             *
++             * The generic SDHCI reset clears both status-enable fields,
++             * leaving U-Boot with no completion status. Preserve them across
++             * this uSDHC-specific RSTA path. Signal enables still follow
++             * generic reset semantics because U-Boot disables interrupt
++             * signaling for polling.
++             */
++            s->norintstsen = norintstsen;
++            s->errintstsen = errintstsen;
++        } else {
++            esdhc_write(opaque, offset, val, size);
++        }
++        break;
++
+     default:
+         esdhc_write(opaque, offset, val, size);
+         break;
+-- 
+2.53.0
+
+

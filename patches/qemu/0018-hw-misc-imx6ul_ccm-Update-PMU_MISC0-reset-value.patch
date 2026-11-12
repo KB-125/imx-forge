@@ -1,0 +1,25 @@
+From 58aad398c18e500c4d07e712be99bdb37b386e55 Mon Sep 17 00:00:00 2001
+From: Bin Meng <bin.meng@processmission.com>
+Date: Fri, 13 Nov 2026 01:27:47 +0800
+Subject: [PATCH 02/10] hw/misc: imx6ul_ccm: Update PMU_MISC0 reset value
+
+---
+ hw/misc/imx6ul_ccm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/misc/imx6ul_ccm.c b/hw/misc/imx6ul_ccm.c
+index 026e6b1..7e5c39a 100644
+--- a/hw/misc/imx6ul_ccm.c
++++ b/hw/misc/imx6ul_ccm.c
+@@ -599,7 +599,7 @@ static void imx6ul_ccm_reset(DeviceState *dev)
+     s->analog[PMU_REG_3P0] = 0x00000F74;
+     s->analog[PMU_REG_2P5] = 0x00001073;
+     s->analog[PMU_REG_CORE] = 0x00482012;
+-    s->analog[PMU_MISC0] = 0x04000000;
++    s->analog[PMU_MISC0] = 0x04000080;
+     s->analog[PMU_MISC1] = 0x00000000;
+     s->analog[PMU_MISC2] = 0x00272727;
+     s->analog[PMU_LOWPWR_CTRL] = 0x00004009;
+-- 
+2.43.0
+

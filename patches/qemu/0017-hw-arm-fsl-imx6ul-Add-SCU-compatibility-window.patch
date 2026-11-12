@@ -1,0 +1,32 @@
+From 653ab47ce72f417c51762c04d2f535e9c733eb12 Mon Sep 17 00:00:00 2001
+From: Bin Meng <bin.meng@processmission.com>
+Date: Fri, 13 Nov 2026 01:27:47 +0800
+Subject: [PATCH 01/10] hw/arm: fsl-imx6ul: Add SCU compatibility window
+
+---
+ hw/arm/fsl-imx6ul.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/hw/arm/fsl-imx6ul.c b/hw/arm/fsl-imx6ul.c
+index 87d03ac..341bbb3 100644
+--- a/hw/arm/fsl-imx6ul.c
++++ b/hw/arm/fsl-imx6ul.c
+@@ -197,6 +197,15 @@ static void fsl_imx6ul_realize(DeviceState *dev, Error **errp)
+     sysbus_realize(SYS_BUS_DEVICE(mpcore), &error_abort);
+     sysbus_mmio_map(SYS_BUS_DEVICE(mpcore), 0, FSL_IMX6UL_A7MPCORE_ADDR);
+ 
++    /*
++     * U-Boot's shared i.MX6 CPU identification code reads the
++     * Cortex-A9 SCU configuration register on i.MX6UL. Cortex-A7
++     * reserves this address, so provide only the compatibility word
++     * needed before the console is initialized.
++     */
++    create_unimplemented_device("a7mpcore-scu-compat",
++                                FSL_IMX6UL_A7MPCORE_ADDR + 0x4, 4);
++
+     gic = mpcore;
+     gicsbd = SYS_BUS_DEVICE(gic);
+     cpu = DEVICE(&s->cpu);
+-- 
+2.43.0
+

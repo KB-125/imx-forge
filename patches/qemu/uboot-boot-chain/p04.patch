@@ -1,0 +1,148 @@
+U-Boot probes DRAM size from the MMDC MDCTL and MDMISC registers.
+The existing unimplemented region returns zero, so U-Boot cannot
+derive a geometry matching the RAM mapped by the machine.
+
+Replace the placeholder with a small read-only model. Use the
+8-bank, 16-bit DDR3 layout of the EVK and derive the row count
+from the machine RAM size.
+
+Signed-off-by: Bin Meng <bin.meng@processmission.com>
+---
+
+ hw/arm/fsl-imx6ul.c         | 63 +++++++++++++++++++++++++++++++++++--
+ hw/arm/mcimx6ul-evk.c       |  2 ++
+ include/hw/arm/fsl-imx6ul.h |  2 ++
+ 3 files changed, 65 insertions(+), 2 deletions(-)
+
+diff --git a/hw/arm/fsl-imx6ul.c b/hw/arm/fsl-imx6ul.c
+index 74c1a30959..473269fcea 100644
+--- a/hw/arm/fsl-imx6ul.c
++++ b/hw/arm/fsl-imx6ul.c
+@@ -25,17 +25,75 @@
+ #include "hw/core/boards.h"
+ #include "system/system.h"
+ #include "qemu/error-report.h"
++#include "qemu/host-utils.h"
+ #include "qemu/module.h"
+ #include "target/arm/cpu-qom.h"
+ 
+ #define NAME_SIZE 20
+ 
++#define MMDC_MDCTL  0x00
++#define MMDC_MDMISC 0x18
++
++static uint32_t fsl_imx6ul_mmdc_mdctl(uint64_t ram_size)
++{
++    unsigned int size_bits;
++    unsigned int row;
++
++    /*
++     * Use the EVK's 8-bank, 16-bit DDR3 geometry and vary the row count
++     * so firmware observes no more memory than QEMU mapped
++     */
++    ram_size = pow2floor(MAX(ram_size, 16 * MiB));
++    size_bits = 63 - clz64(ram_size);
++
++    if (size_bits == 24) {
++        return BIT(31) | BIT(19);
++    }
++
++    row = MIN(size_bits - 25, 7);
++    return BIT(31) | (row << 24) | BIT(20) | BIT(19);
++}
++
++static uint64_t fsl_imx6ul_mmdc_read(void *opaque, hwaddr offset,
++                                     unsigned size)
++{
++    FslIMX6ULState *s = opaque;
++
++    switch (offset) {
++    case MMDC_MDCTL:
++        return fsl_imx6ul_mmdc_mdctl(s->ram_size);
++    case MMDC_MDMISC:
++        /* EVK reset geometry: 8 banks, bank interleaving and RALAT 5 */
++        return 0x1740;
++    default:
++        return 0;
++    }
++}
++
++static void fsl_imx6ul_mmdc_write(void *opaque, hwaddr offset,
++                                  uint64_t value, unsigned size)
++{
++}
++
++static const MemoryRegionOps fsl_imx6ul_mmdc_ops = {
++    .read = fsl_imx6ul_mmdc_read,
++    .write = fsl_imx6ul_mmdc_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = {
++        .min_access_size = 4,
++        .max_access_size = 4,
++    },
++};
++
+ static void fsl_imx6ul_init(Object *obj)
+ {
+     FslIMX6ULState *s = FSL_IMX6UL(obj);
+     char name[NAME_SIZE];
+     int i;
+ 
++    memory_region_init_io(&s->mmdc, obj, &fsl_imx6ul_mmdc_ops, s,
++                          "imx6ul.mmdc", FSL_IMX6UL_MMDC_CFG_SIZE);
++
+     object_initialize_child(obj, "cpu0", &s->cpu,
+                             ARM_CPU_TYPE_NAME("cortex-a7"));
+ 
+@@ -228,8 +286,8 @@ static void fsl_imx6ul_realize(DeviceState *dev, Error **errp)
+     /*
+      * MMDC
+      */
+-    create_unimplemented_device("a7mpcore-mmdc", FSL_IMX6UL_MMDC_CFG_ADDR,
+-                                FSL_IMX6UL_MMDC_CFG_SIZE);
++    memory_region_add_subregion(get_system_memory(),
++                                FSL_IMX6UL_MMDC_CFG_ADDR, &s->mmdc);
+ 
+     /*
+      * OCOTP
+@@ -745,6 +803,7 @@ static const Property fsl_imx6ul_properties[] = {
+                      true),
+     DEFINE_PROP_BOOL("fec2-phy-connected", FslIMX6ULState, phy_connected[1],
+                      true),
++    DEFINE_PROP_UINT64("ram-size", FslIMX6ULState, ram_size, 128 * MiB),
+ };
+ 
+ static void fsl_imx6ul_class_init(ObjectClass *oc, const void *data)
+diff --git a/hw/arm/mcimx6ul-evk.c b/hw/arm/mcimx6ul-evk.c
+index 6e9d92b1f1..3f5acae57e 100644
+--- a/hw/arm/mcimx6ul-evk.c
++++ b/hw/arm/mcimx6ul-evk.c
+@@ -45,6 +45,8 @@ static void mcimx6ul_evk_init(MachineState *machine)
+     object_property_set_uint(OBJECT(s), "fec2-phy-num", 1, &error_fatal);
+     object_property_set_bool(OBJECT(s), "fec1-phy-connected", false,
+                              &error_fatal);
++    object_property_set_uint(OBJECT(s), "ram-size", machine->ram_size,
++                             &error_fatal);
+     qdev_realize(DEVICE(s), NULL, &error_fatal);
+ 
+     memory_region_add_subregion(get_system_memory(), FSL_IMX6UL_MMDC_ADDR,
+diff --git a/include/hw/arm/fsl-imx6ul.h b/include/hw/arm/fsl-imx6ul.h
+index 6205fe6b77..bc0baca721 100644
+--- a/include/hw/arm/fsl-imx6ul.h
++++ b/include/hw/arm/fsl-imx6ul.h
+@@ -90,9 +90,11 @@ struct FslIMX6ULState {
+     MemoryRegion       caam;
+     MemoryRegion       ocram;
+     MemoryRegion       ocram_alias;
++    MemoryRegion       mmdc;
+ 
+     uint32_t           phy_num[FSL_IMX6UL_NUM_ETHS];
+     bool               phy_connected[FSL_IMX6UL_NUM_ETHS];
++    uint64_t           ram_size;
+ };
+ 
+ enum FslIMX6ULMemoryMap {
+-- 
+2.53.0
+
+

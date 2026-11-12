@@ -18,6 +18,8 @@ description: "板卡 bring-up、烧录与网络启动的实测排查记录"
   <ChapterLink num="06" href="2026-07-03-wm8960-asoc-card-m-not-built">WM8960 主线声卡无声根因（Issue #43：ASOC_CARD=m）</ChapterLink>
   <ChapterLink num="07" href="2026-08-25-qemu-board-emulation-research">QEMU 板级模拟调研：选型、外设覆盖与分期落地</ChapterLink>
   <ChapterLink num="08" href="2026-10-20-uboot-shared-mdio-handoff">U-Boot 2026.10 与 Linux SD 启动修复</ChapterLink>
+  <ChapterLink num="09" href="2026-11-13-qemu-custom-system-feasibility">QEMU 运行定制 U-Boot / Kernel / rootfs 的可行性评估</ChapterLink>
+  <ChapterLink num="10" href="2026-11-13-qemu-bringup-progress">QEMU 启动链 Bring-up 进度（U-Boot → Kernel → rootfs）</ChapterLink>
 </ChapterNav>
 
 ::: tip 遇到问题？

@@ -1,0 +1,32 @@
+Commit 56a11a9b7580 ("hw/misc: imx6_ccm: Update PMU_MISC0 reset value")
+updated the i.MX6 CCM model so U-Boot sees PMU_MISC0[REFTOP_VBGUP]
+set after reset. The i.MX6UL CCM model still returns this bit clear,
+causing U-Boot init_bandgap() to wait for a state that the model
+never reaches.
+
+Apply the same reset behavior to the i.MX6UL CCM model so U-Boot
+can observe that the bandgap has stabilized.
+
+Signed-off-by: Bin Meng <bin.meng@processmission.com>
+---
+
+ hw/misc/imx6ul_ccm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/misc/imx6ul_ccm.c b/hw/misc/imx6ul_ccm.c
+index c4f6e372fe..4accbcbeed 100644
+--- a/hw/misc/imx6ul_ccm.c
++++ b/hw/misc/imx6ul_ccm.c
+@@ -592,7 +592,7 @@ static void imx6ul_ccm_reset(DeviceState *dev)
+     s->analog[PMU_REG_3P0] = 0x00000F74;
+     s->analog[PMU_REG_2P5] = 0x00001073;
+     s->analog[PMU_REG_CORE] = 0x00482012;
+-    s->analog[PMU_MISC0] = 0x04000000;
++    s->analog[PMU_MISC0] = 0x04000080;
+     s->analog[PMU_MISC1] = 0x00000000;
+     s->analog[PMU_MISC2] = 0x00272727;
+     s->analog[PMU_LOWPWR_CTRL] = 0x00004009;
+-- 
+2.53.0
+
+

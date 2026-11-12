@@ -1,0 +1,57 @@
+From a5a813d8d034555b99f3ac1ecd3d03a7b8daf03b Mon Sep 17 00:00:00 2001
+From: Bin Meng <bin.meng@processmission.com>
+Date: Fri, 13 Nov 2026 01:27:54 +0800
+Subject: [PATCH 07/10] hw/sd: sdhci: Preserve uSDHC status enables for U-Boot
+
+---
+ hw/sd/sdhci.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/hw/sd/sdhci.c b/hw/sd/sdhci.c
+index 09aea73..2ee6284 100644
+--- a/hw/sd/sdhci.c
++++ b/hw/sd/sdhci.c
+@@ -1625,6 +1625,7 @@ static void sdhci_bus_class_init(ObjectClass *klass, const void *data)
+ #define ESDHC_TUNING_CTRL               0xcc
+ #define ESDHC_TUNE_CTRL_STATUS          0x68
+ #define ESDHC_WTMK_LVL                  0x44
++#define ESDHC_SYSCTL_RSTA               BIT(24)
+ 
+ /* Undocumented register used by guests working around erratum ERR004536 */
+ #define ESDHC_UNDOCUMENTED_REG27        0x6c
+@@ -1920,6 +1921,32 @@ usdhc_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
+         sdhci_write(opaque, offset, val | s->trnmod, size);
+         break;
+ 
++    case SDHC_CLKCON:
++        if (value & ESDHC_SYSCTL_RSTA) {
++            uint16_t norintstsen = s->norintstsen;
++            uint16_t errintstsen = s->errintstsen;
++
++            esdhc_write(opaque, offset, val, size);
++
++            /*
++             * U-Boot programs INT_STATUS_EN in fsl_esdhc_init(), then issues
++             * another RSTA from esdhc_init_common(). It only clears BRR/BWR
++             * after that reset and relies on the remaining enables while
++             * polling INT_STATUS for command, transfer, and error completion.
++             *
++             * The generic SDHCI reset clears both status-enable fields,
++             * leaving U-Boot with no completion status. Preserve them across
++             * this uSDHC-specific RSTA path. Signal enables still follow
++             * generic reset semantics because U-Boot disables interrupt
++             * signaling for polling.
++             */
++            s->norintstsen = norintstsen;
++            s->errintstsen = errintstsen;
++        } else {
++            esdhc_write(opaque, offset, val, size);
++        }
++        break;
++
+     default:
+         esdhc_write(opaque, offset, val, size);
+         break;
+-- 
+2.43.0
+

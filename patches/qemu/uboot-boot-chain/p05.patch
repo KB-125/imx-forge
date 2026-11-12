@@ -1,0 +1,35 @@
+SDHCI_QUIRK_NO_BUSY_IRQ was copied from Linux with its bit number
+unchanged. The quirk mask is internal to QEMU: it is neither visible
+to guests nor part of migration state. Mirroring Linux therefore
+provides no compatibility benefit and constrains local allocations.
+
+Move it to bit zero so QEMU can allocate SDHCI quirks sequentially in
+its own namespace.
+
+Signed-off-by: Bin Meng <bin.meng@processmission.com>
+---
+
+ include/hw/sd/sdhci.h | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/include/hw/sd/sdhci.h b/include/hw/sd/sdhci.h
+index a9da6203fc..8083379de3 100644
+--- a/include/hw/sd/sdhci.h
++++ b/include/hw/sd/sdhci.h
+@@ -109,11 +109,8 @@ typedef struct SDHCIState SDHCIState;
+ /*
+  * Controller does not provide transfer-complete interrupt when not
+  * busy.
+- *
+- * NOTE: This definition is taken out of Linux kernel and so the
+- * original bit number is preserved
+  */
+-#define SDHCI_QUIRK_NO_BUSY_IRQ    BIT(14)
++#define SDHCI_QUIRK_NO_BUSY_IRQ    BIT(0)
+ 
+ #define TYPE_PCI_SDHCI "sdhci-pci"
+ DECLARE_INSTANCE_CHECKER(SDHCIState, PCI_SDHCI,
+-- 
+2.53.0
+
+

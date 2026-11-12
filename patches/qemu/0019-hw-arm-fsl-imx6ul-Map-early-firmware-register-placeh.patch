@@ -1,0 +1,39 @@
+From d92844009b5f5fc30c1242b7f00b23feaa7cd25a Mon Sep 17 00:00:00 2001
+From: Bin Meng <bin.meng@processmission.com>
+Date: Fri, 13 Nov 2026 01:27:47 +0800
+Subject: [PATCH 03/10] hw/arm: fsl-imx6ul: Map early firmware register
+ placeholders
+
+---
+ hw/arm/fsl-imx6ul.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/hw/arm/fsl-imx6ul.c b/hw/arm/fsl-imx6ul.c
+index 341bbb3..4cc529d 100644
+--- a/hw/arm/fsl-imx6ul.c
++++ b/hw/arm/fsl-imx6ul.c
+@@ -220,6 +220,21 @@ static void fsl_imx6ul_realize(DeviceState *dev, Error **errp)
+     create_unimplemented_device("a7mpcore-dap", FSL_IMX6UL_A7MPCORE_DAP_ADDR,
+                                 FSL_IMX6UL_A7MPCORE_DAP_SIZE);
+ 
++    /* AIPS bus configuration */
++    create_unimplemented_device("aips1-config", FSL_IMX6UL_AIPS1_CFG_ADDR,
++                                FSL_IMX6UL_AIPS1_CFG_SIZE);
++    create_unimplemented_device("aips2-config", FSL_IMX6UL_AIPS2_CFG_ADDR,
++                                FSL_IMX6UL_AIPS2_CFG_SIZE);
++
++    /* SNVS low-power general-purpose registers */
++    create_unimplemented_device("snvs-lp", FSL_IMX6UL_SNVS_LP_ADDR,
++                                FSL_IMX6UL_SNVS_LP_SIZE);
++
++    /* System counter control */
++    create_unimplemented_device("sys-counter-control",
++                                FSL_IMX6UL_SYS_CNT_CTRL_ADDR,
++                                FSL_IMX6UL_SYS_CNT_CTRL_SIZE);
++
+     /*
+      * MMDC
+      */
+-- 
+2.43.0
+

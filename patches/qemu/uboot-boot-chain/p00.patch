@@ -1,0 +1,51 @@
+
+The mcimx6ul-evk machine can boot Linux directly, but it cannot run the
+U-Boot proper produced by Buildroot far enough to load a kernel from its
+SD card. Early U-Boot boot test accesses currently abort or observe
+placeholder values, and the i.MX uSDHC model exposes several issues.
+
+This series lets an unmodified Buildroot 2026.05 U-Boot 2024.07 image
+run on mcimx6ul-evk, load zImage and imx6ul-14x14-evk.dtb from USDHC2,
+start Linux, mount the SD card root file system, and reach the Buildroot
+login prompt. It also documents and tests the existing direct Linux boot
+path.
+
+Patches 1 through 4 provide the minimum early-firmware-visible state.
+Patches 5 through 8 address i.MX uSDHC behavior needed by U-Boot. The
+last two patches document both boot paths and add functional tests for
+U-Boot and direct Linux boot.
+
+
+Bin Meng (10):
+  hw/arm: fsl-imx6ul: Add SCU compatibility window
+  hw/misc: imx6ul_ccm: Update PMU_MISC0 reset value
+  hw/arm: fsl-imx6ul: Map early firmware register placeholders
+  hw/arm: fsl-imx6ul: Add a minimal MMDC geometry model
+  hw/sd: sdhci: Use a QEMU-local no-busy IRQ quirk bit
+  hw/sd: sdhci: Honor i.MX uSDHC vendor clock gates
+  hw/sd: sdhci: Preserve uSDHC status enables for U-Boot
+  hw/sd: sdhci: Skip SDMA boundary stops for i.MX uSDHC
+  docs/system/arm: Document MCIMX6UL-EVK Buildroot boot
+  tests/functional/arm: Add MCIMX6UL-EVK boot tests
+
+ MAINTAINERS                               |  1 +
+ docs/system/arm/mcimx6ul-evk.rst          | 67 +++++++++++++++++
+ hw/arm/fsl-imx6ul.c                       | 87 +++++++++++++++++++++-
+ hw/arm/mcimx6ul-evk.c                     |  2 +
+ hw/misc/imx6ul_ccm.c                      |  2 +-
+ hw/sd/sdhci.c                             | 89 +++++++++++++++++++----
+ include/hw/arm/fsl-imx6ul.h               |  2 +
+ include/hw/sd/sdhci.h                     | 15 +++-
+ tests/functional/arm/meson.build          |  2 +
+ tests/functional/arm/test_mcimx6ul_evk.py | 70 ++++++++++++++++++
+ 10 files changed, 315 insertions(+), 22 deletions(-)
+ create mode 100644 tests/functional/arm/test_mcimx6ul_evk.py
+
+---
+base-commit: e8d693e12af9cbb89d724baadfcc08559669e279
+branch: imx6ul-evk
+
+-- 
+2.53.0
+
+

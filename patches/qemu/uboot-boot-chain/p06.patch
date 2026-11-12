@@ -1,0 +1,114 @@
+U-Boot's i.MX uSDHC driver enables IPGEN, HCKEN, PEREN and CKEN in
+VEND_SPEC rather than the standard SDHCI clock-control fields. QEMU
+only checks the standard fields before issuing a command. It therefore
+silently drops U-Boot's MMC commands even though the controller clocks
+are enabled. U-Boot eventually times out waiting for command completion
+and cannot load the kernel and device tree from the SD card.
+
+Accept the complete vendor clock-gate set as another valid clock source
+for i.MX uSDHC. Also report SDSTB when the vendor IP and host clocks
+are enabled, matching the state U-Boot polls while changing the clock.
+
+Keep this behavior behind an i.MX uSDHC quirk because the shared eSDHC
+paths also serve controllers which use the standard SDHCI fields.
+
+Reference: IMX6ULRM (Rev 2), section 56.8.10, 56.8.12 and 56.8.26
+https://www.nxp.com/webapp/Download?colCode=IMX6ULRM
+
+Signed-off-by: Bin Meng <bin.meng@processmission.com>
+---
+
+ hw/sd/sdhci.c         | 27 ++++++++++++++++++++++++---
+ include/hw/sd/sdhci.h |  7 ++++++-
+ 2 files changed, 30 insertions(+), 4 deletions(-)
+
+diff --git a/hw/sd/sdhci.c b/hw/sd/sdhci.c
+index e58a610397..09aea733ba 100644
+--- a/hw/sd/sdhci.c
++++ b/hw/sd/sdhci.c
+@@ -992,9 +992,11 @@ static void sdhci_data_transfer(void *opaque)
+     }
+ }
+ 
++static bool sdhci_clocks_on(SDHCIState *s);
++
+ static bool sdhci_can_issue_command(SDHCIState *s)
+ {
+-    if (!SDHC_CLOCK_IS_ON(s->clkcon) ||
++    if (!sdhci_clocks_on(s) ||
+         (((s->prnsts & SDHC_DATA_INHIBIT) || s->stopped_state) &&
+         ((s->cmdreg & SDHC_CMD_DATA_PRESENT) ||
+         ((s->cmdreg & SDHC_CMD_RESPONSE) == SDHC_CMD_RSP_WITH_BUSY &&
+@@ -1613,6 +1615,10 @@ static void sdhci_bus_class_init(ObjectClass *klass, const void *data)
+ 
+ #define ESDHC_VENDOR_SPEC               0xc0
+ #define ESDHC_FRC_SDCLK_ON              (1 << 8)
++#define ESDHC_VENDOR_IPGEN              (1 << 11)
++#define ESDHC_VENDOR_HCKEN              (1 << 12)
++#define ESDHC_VENDOR_PEREN              (1 << 13)
++#define ESDHC_VENDOR_CKEN               (1 << 14)
+ 
+ #define ESDHC_DLL_CTRL                  0x60
+ 
+@@ -1629,6 +1635,16 @@ static void sdhci_bus_class_init(ObjectClass *klass, const void *data)
+ #define ESDHC_PRNSTS_SDSTB              (1 << 3)
+ #define ESDHC_PRNSTS_CLOCK_GATE_OFF     BIT(7)
+ 
++static bool sdhci_clocks_on(SDHCIState *s)
++{
++    uint32_t vendor_clocks = ESDHC_VENDOR_IPGEN | ESDHC_VENDOR_HCKEN |
++                             ESDHC_VENDOR_PEREN | ESDHC_VENDOR_CKEN;
++
++    return SDHC_CLOCK_IS_ON(s->clkcon) ||
++           ((s->quirks & SDHCI_QUIRK_CLOCKS_IN_VENDOR) &&
++            (s->vendor_spec & vendor_clocks) == vendor_clocks);
++}
++
+ static uint64_t esdhc_read(void *opaque, hwaddr offset, unsigned size)
+ {
+     SDHCIState *s = SYSBUS_SDHCI(opaque);
+@@ -1664,7 +1680,11 @@ static uint64_t esdhc_read(void *opaque, hwaddr offset, unsigned size)
+     case SDHC_PRNSTS:
+         /* Add SDSTB (SD Clock Stable) bit to PRNSTS */
+         ret = sdhci_read(opaque, offset, size) & ~ESDHC_PRNSTS_SDSTB;
+-        if (s->clkcon & SDHC_CLOCK_INT_STABLE) {
++        if ((s->clkcon & SDHC_CLOCK_INT_STABLE) ||
++            ((s->quirks & SDHCI_QUIRK_CLOCKS_IN_VENDOR) &&
++             (s->vendor_spec & (ESDHC_VENDOR_IPGEN |
++                                ESDHC_VENDOR_HCKEN)) ==
++             (ESDHC_VENDOR_IPGEN | ESDHC_VENDOR_HCKEN))) {
+             ret |= ESDHC_PRNSTS_SDSTB;
+         }
+         break;
+@@ -1923,7 +1943,8 @@ static void imx_usdhc_init(Object *obj)
+     DeviceState *dev = DEVICE(obj);
+ 
+     s->io_ops = &usdhc_mmio_ops;
+-    s->quirks = SDHCI_QUIRK_NO_BUSY_IRQ;
++    s->quirks = SDHCI_QUIRK_NO_BUSY_IRQ |
++                SDHCI_QUIRK_CLOCKS_IN_VENDOR;
+     qdev_prop_set_uint8(dev, "sd-spec-version", 3);
+ }
+ 
+diff --git a/include/hw/sd/sdhci.h b/include/hw/sd/sdhci.h
+index 8083379de3..c542d47f9b 100644
+--- a/include/hw/sd/sdhci.h
++++ b/include/hw/sd/sdhci.h
+@@ -110,7 +110,12 @@ typedef struct SDHCIState SDHCIState;
+  * Controller does not provide transfer-complete interrupt when not
+  * busy.
+  */
+-#define SDHCI_QUIRK_NO_BUSY_IRQ    BIT(0)
++#define SDHCI_QUIRK_NO_BUSY_IRQ          BIT(0)
++/*
++ * Controller uses vendor-specific clock gates in place of the standard
++ * SDHCI clock-control fields
++ */
++#define SDHCI_QUIRK_CLOCKS_IN_VENDOR     BIT(1)
+ 
+ #define TYPE_PCI_SDHCI "sdhci-pci"
+ DECLARE_INSTANCE_CHECKER(SDHCIState, PCI_SDHCI,
+-- 
+2.53.0
+
+

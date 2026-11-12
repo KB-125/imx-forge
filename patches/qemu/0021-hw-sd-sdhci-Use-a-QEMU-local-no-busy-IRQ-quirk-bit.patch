@@ -1,0 +1,29 @@
+From 2768521b40a93f382c2cee80a3295b6ba6520d3c Mon Sep 17 00:00:00 2001
+From: Bin Meng <bin.meng@processmission.com>
+Date: Fri, 13 Nov 2026 01:27:54 +0800
+Subject: [PATCH 05/10] hw/sd: sdhci: Use a QEMU-local no-busy IRQ quirk bit
+
+---
+ include/hw/sd/sdhci.h | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/include/hw/sd/sdhci.h b/include/hw/sd/sdhci.h
+index a9da620..8083379 100644
+--- a/include/hw/sd/sdhci.h
++++ b/include/hw/sd/sdhci.h
+@@ -109,11 +109,8 @@ typedef struct SDHCIState SDHCIState;
+ /*
+  * Controller does not provide transfer-complete interrupt when not
+  * busy.
+- *
+- * NOTE: This definition is taken out of Linux kernel and so the
+- * original bit number is preserved
+  */
+-#define SDHCI_QUIRK_NO_BUSY_IRQ    BIT(14)
++#define SDHCI_QUIRK_NO_BUSY_IRQ    BIT(0)
+ 
+ #define TYPE_PCI_SDHCI "sdhci-pci"
+ DECLARE_INSTANCE_CHECKER(SDHCIState, PCI_SDHCI,
+-- 
+2.43.0
+
