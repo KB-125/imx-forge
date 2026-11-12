@@ -16,6 +16,7 @@ title: 系统构建
   <ChapterLink num="04" href="../rootfs/">根文件系统</ChapterLink>
   <ChapterLink num="05" href="../buildroot/">Buildroot 构建</ChapterLink>
   <ChapterLink num="06" href="../practical/">实战演练</ChapterLink>
+  <ChapterLink num="07" href="07_full_flow">全流程串讲:从源码到 login</ChapterLink>
 </ChapterNav>
 
 ### 00 硬件与启动原理（可选前置）
@@ -45,6 +46,10 @@ BusyBox 手搓最小 rootfs:rootfs 概述 → BusyBox 编译 → inittab 与 ini
 ### 06 实战演练
 
 把前面所有产物装配成一次完整启动:构建系统、启动与调试、NFS 实战体验。
+
+### 07 全流程串讲
+
+六步合上:一张总览图、两条可照抄的命令链(真机 / QEMU)、镜像布局表、启动失败对照表和一页速查。干活前扫一眼,能少走一半弯路。
 
 ## 学完往哪走
 

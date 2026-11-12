@@ -185,6 +185,7 @@ flowchart TD
 这比"照着教程敲一遍"值钱得多。
 
 ::: details 延伸阅读
+- 照着命令走一遍:[全流程串讲:从源码到 login](../system-build/07_full_flow)
 - 本仓库构建脚本:`scripts/build_helper/`、`scripts/image_builder/`
 - QEMU 启动链实测记录:[QEMU bring-up 笔记](../../notes/2026-11-13-qemu-bringup-progress)
 - 可行性评估:[QEMU 运行定制系统评估](../../notes/2026-11-13-qemu-custom-system-feasibility)
