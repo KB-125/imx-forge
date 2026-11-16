@@ -13,6 +13,10 @@ title: clangd 交叉编译配置：让跳转又快又准
 - 仓库根的 `.clangd` 文件真实存在，咱们下面 cat 它做证据
 :::
 
+::: warning 2026-11 更新 · 四组件统一索引
+仓库根 `.clangd` 现在指向 `out`，索引范围从单棵内核树扩到 `third_party/{qemu,uboot-mainline,linux_mainline,busybox}` 四棵源码树；数据库由 `scripts/build_helper/gen-compile-commands.sh` 生成并合并为 `out/compile_commands.json`。本文第二、三节里的“把 json 拷到 `third_party/linux_mainline`”和那份旧 `.clangd` 全文，是单内核方案时期的做法，保留作对照即可；现行的生成命令、clangd 参数与实测结果见文末[第六节](#六四组件统一索引2026-11)。
+:::
+
 ## 一、为什么弃 cpptools 的 IntelliSense 选 clangd
 
 内核树是那种能把通用索引器拖垮的工程：三万多个 C 文件，`drivers/` 下面一套 `include/asm-generic` 再乘一套 `arch/arm/include` 的双架构头文件，加上 `__KERNEL__`、`CONFIG_*` 上千个宏开关。cpptools 的做法是让咱们在 `includePath` 里手工猜路径，猜漏一个目录就跳错文件，猜全了首次索引又要等上很久。更麻烦的是它按宿主机环境猜，而咱们这份代码要用交叉工具链编——头文件、宏、ABI 全是 ARM 的，宿主视角天生对不上。
@@ -205,6 +209,42 @@ Index:
 | 把 `CompilationDatabase` 指到 out 树又跑了 `make clean` | clean 删的就是配置指向的那份 json，索引直接失灵 | 重新生成并拷回源码树根 |
 | 改配置或换 defconfig 重建后，索引还在悄悄用过期命令行 | 拷贝约定下 `make clean` 只删 out 树里的原件，源码树根那份拷贝安然无恙，但它从不自动更新 | 重新生成并拷回源码树根 |
 | 后台索引迟迟跑不完 | 无关大目录都在被扫 | 在 `.clangd` 里配 `If.PathExclude` 加 `Index.Background: Skip`，见本篇第四节 |
+
+## 六、四组件统一索引（2026-11）
+
+单内核方案只有一份数据库；要同时读 QEMU、U-Boot、Linux、BusyBox，得把四份数据库合并。四棵树的构建系统不一样，但都能从真实构建产物里取到命令：
+
+| 组件 | 数据库来源 | 构建目录 |
+|------|------------|----------|
+| QEMU | meson 在 configure 阶段自动写 `compile_commands.json` | `out/qemu/build` |
+| U-Boot | `scripts/gen_compile_commands.py -d out/uboot` | `out/uboot` |
+| Linux | `make ... compile_commands.json`（原生目标） | `out/linux` |
+| BusyBox | 复用内核的 `gen_compile_commands.py` 扫 `.cmd` | `out/busybox` |
+
+前置条件是四者都构建过：QEMU 必须先跑 `scripts/build_helper/build-qemu.sh`（数据库是 configure 的副产物），U-Boot/Linux 各自跑过构建脚本。BusyBox 平时不单独构建，生成脚本发现 `out/busybox/busybox` 不存在时，会用 `rootfs/buildroot/fragments/busybox.config` 自动补建一次。之后一条命令生成并合并：
+
+```bash
+scripts/build_helper/gen-compile-commands.sh
+```
+
+实测输出 `out/compile_commands.json`，6737 条、16.4 MB（2026-11-16，本机四组件均已构建，QEMU 已改用系统依赖重生成）。合并脚本是 `scripts/build_helper/merge-compile-commands.py`，它只保留 `file` 落在对应 `third_party/<组件>` 下的条目（丢掉 meson 生成源、QEMU 子项目等），按文件去重，并把交叉编译条目的 `argv[0]` 重写成绝对路径。`out/` 已被 `.gitignore` 忽略，合并产物不会进 git。
+
+clangd 侧只需要两处配合。仓库根 `.clangd` 的 `CompilationDatabase` 改为 `out`（相对 `.clangd` 所在目录解析，已实测）；VSCode 的 `settings.json` 里 `clangd.arguments` 要带绝对路径的 query-driver：
+
+```json
+"clangd.arguments": [
+  "--query-driver=/opt/arm-gnu-toolchain/bin/arm-none-linux-gnueabihf-*",
+  "--background-index"
+]
+```
+
+绝对路径不是洁癖：clangd 会先把编译命令里的 `argv[0]` 解析成绝对路径，再拿它去匹配 query-driver 的 glob，写成裸名 `arm-none-linux-gnueabihf-*` 匹配不上，交叉工具链的 libc 头就注入不进来。合并脚本把每条交叉命令的编译器改写成 `/opt/.../gcc`，正是为了让 glob 稳定命中；QEMU 的 host 条目（`gcc`/`cc`）保持原样。
+
+实测五条 `clangd --check`：QEMU `hw/arm/fsl-imx6ul.c`、带补丁的 `hw/input/gt911.c`、U-Boot `common/main.c`、Linux `fec_main.c`、BusyBox `applets/applets.c` 全部 `All checks completed, 0 errors`。汇编源（如 U-Boot 的 `start.S`）clangd 本身不支持，会报 `Clangd does not support assembly or IR source files`，这是预期行为，不是数据库的问题。
+
+两点环境备注。Buildroot 没有并入：它没有原生 compile_commands 支持，包构建又多发生在 `out/release-latest/buildroot/build/<pkg>/` 的源码副本里，索引价值低。QEMU 的 host 依赖如果没装，`build-qemu.sh` 会在 `pkg-config --exists glib-2.0` 处失败。本机已安装 `pkg-config libglib2.0-dev libpixman-1-dev libfdt-dev libslirp-dev python3-venv`，重建后 QEMU 条目里的 `-I` 全部指向 `/usr`，不再依赖临时解包目录。
+
+改了 defconfig、补丁或源码后，`.cmd` 里的命令行会变，重新跑一次生成脚本即可；`make clean` 会删掉对应组件构建目录里的 json，也按同一方式重建。
 
 ## 继续学习
 

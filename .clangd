@@ -1,6 +1,8 @@
 # .clangd
+# 统一索引 third_party/{qemu,uboot-mainline,linux_mainline,busybox}；
+# 数据库由 scripts/build_helper/gen-compile-commands.sh 生成到 out/compile_commands.json
 CompileFlags:
-  CompilationDatabase: third_party/linux_mainline
+  CompilationDatabase: out
   Remove:
     - -mno-fp-ret-in-387
     - -mpreferred-stack-boundary=*
@@ -15,6 +17,10 @@ CompileFlags:
     - -mno-fdpic
     - -fno-ipa-sra
     - -fzero-init-padding-bits=all
+    - -fno-guess-branch-probability
+    - -mno-thumb-interwork
+    - -mthumb-interwork
+    - -mword-relocations
 
 Diagnostics:
   Suppress:

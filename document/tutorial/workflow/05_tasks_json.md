@@ -138,7 +138,7 @@ menuconfig 调 rootfs 配置，clean 清理 Buildroot 输出，咱们也从 Run 
 }
 ```
 
-这条 make 的 `O=` 咱们特意写成 `${workspaceFolder}`，VSCode 跑任务时会把它替换成工作区根的绝对路径。为什么不用相对路径：内核顶层 Makefile 对 `O=` 的解析发生在 `make -C` 切进源码树之后，写 `out/linux` 会落到 `third_party/linux_mainline/out/linux` 里去——仓库里那个空目录就是这个写法踩出来的残留；真产物在仓库根的 `out/linux`，`build-linux.sh` 里用的就是绝对路径。生成后咱们还要把 json 拷回或软链成 `third_party/linux_mainline/compile_commands.json`，根目录 `.clangd` 的 CompilationDatabase 指的是那里，这是 04 篇定下的约定。这条命令笔者在本仓库真跑过一遍，`GEN compile_commands.json` 一行输出，9.3MB 的 json 按预期落在 `out/linux/` 下。
+这条 make 的 `O=` 咱们特意写成 `${workspaceFolder}`，VSCode 跑任务时会把它替换成工作区根的绝对路径。为什么不用相对路径：内核顶层 Makefile 对 `O=` 的解析发生在 `make -C` 切进源码树之后，写 `out/linux` 会落到 `third_party/linux_mainline/out/linux` 里去——仓库里那个空目录就是这个写法踩出来的残留；真产物在仓库根的 `out/linux`，`build-linux.sh` 里用的就是绝对路径。生成后不需要再拷到源码树：根目录 `.clangd` 现在指向 `out/compile_commands.json` 这份四组件合并数据库（见 04 篇第六节）；这条 `make` 任务适合单独核对内核的编译命令，要和 QEMU/U-Boot/BusyBox 一起索引时跑 `scripts/build_helper/gen-compile-commands.sh`。这条命令笔者在本仓库真跑过一遍，`GEN compile_commands.json` 一行输出，9.3MB 的 json 按预期落在 `out/linux/` 下。
 
 咱们贴完保存，八条齐了。
 
