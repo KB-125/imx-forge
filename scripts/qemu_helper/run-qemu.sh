@@ -33,9 +33,11 @@
 # the P0-era VARIANT dtb; with the single-source REAL-board dtb it hangs
 # before the UART driver probes (zero serial output, measured on system
 # 8.2.2 in CI 2026-08-31 — MMDC/OCOTP etc. are address holes there). Boot
-# verification therefore requires the self-built QEMU below. The U-Boot chain
-# enablement series (Bin Meng, 2026-08) is still under upstream review and
-# NOT part of any release yet; revisit with QEMU >= 11.2 (~2026-12).
+# verification therefore requires the self-built QEMU below.
+#
+# For the full U-Boot -> kernel -> rootfs chain use run-qemu-uboot.sh, which
+# loads the headerless u-boot-dtb.bin at 0x87800000 with -device loader and
+# attaches a partitioned SD image (verified with the self-built QEMU 11.1).
 #
 # QEMU binary selection: the self-built 11.1 (scripts/build_helper/
 # build-qemu.sh — eLCDIF display model, FlexCAN, MMDC/OCOTP/QSPI/USBMISC

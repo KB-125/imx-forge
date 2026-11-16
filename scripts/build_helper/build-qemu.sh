@@ -87,6 +87,11 @@ RECORDED_PIN="$(git -C "${PROJECT_ROOT}" ls-tree HEAD "${SUBMODULE_REL}" | awk '
 if [[ -n "${RECORDED_PIN}" && "$(git -C "${QEMU_SRC}" rev-parse HEAD)" == "${RECORDED_PIN}" ]]; then
     # submodule sits on the clean pin: (re)apply our series
     git -C "${QEMU_SRC}" checkout -- . 2>/dev/null || true
+    # Patches also add new files; checkout only restores tracked ones, so a
+    # partially applied series would make the next `git apply` fail with
+    # "already exists in working directory".  Drop untracked patch outputs
+    # (never -x: keep ignored local files).
+    git -C "${QEMU_SRC}" clean -fdq 2>/dev/null || true
     for p in "${PATCH_DIR}"/*.patch; do
         [[ -e "$p" ]] || { log "no patches in ${PATCH_DIR}, building stock v11.1.0"; break; }
         log "applying $(basename "$p")"

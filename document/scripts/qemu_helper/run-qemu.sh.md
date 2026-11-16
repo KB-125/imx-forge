@@ -75,9 +75,9 @@ scripts/qemu_helper/run-qemu.sh --no-build
 ## 关键实现细节
 
 - **直启路径**：`-kernel zImage -dtb`。stock QEMU 没有 i.MX boot ROM/HAB
-  模型，`-bios u-boot-dtb.imx`（带 IVT 头）不可用；U-Boot 完整链需要
-  QEMU ≥ 11.1（2026-08 Bin Meng 系列），后续 Phase 用
-  `-device loader,file=u-boot.bin,addr=0x87800000` 解锁
+  模型，`-bios u-boot-dtb.imx`（带 IVT 头）不可用；U-Boot 完整链已由
+  `run-qemu-uboot.sh` 用 `-device loader,file=u-boot-dtb.bin,addr=0x87800000`
+  实现，自建 QEMU 11.1 实测通过
 - **SD 卡挂 USDHC2**：`-drive if=sd,index=1` → guest `/dev/mmcblk1`，
   rootfs 镜像无分区表，故 `root=/dev/mmcblk1`（整卡）
 - **`-nic user`**：机器模型用 `qemu_configure_nic_device()` 自动把 netdev
@@ -98,9 +98,9 @@ FlexCAN 失败）均已随自建 QEMU v11.1 + 外设模型补丁序列消除—�
 net-dhcp-ping / ap3216c / gt911 / wm8960 / can0 / display 都有断言覆盖。
 现存的已知项：
 
-- **U-Boot 完整启动链**：stock 与自建 11.1 都没有 i.MX boot ROM/HAB
-  模型，仍走 `-kernel` 直启；等 QEMU ≥ 11.2（~2026-12）用
-  `-device loader` 解锁（详见 emu 卷 08 章等价性原则）
+- **U-Boot 完整启动链**：已由 `run-qemu-uboot.sh` 支持（generic loader +
+  分区镜像，2026-11-16 自建 QEMU 11.1 实测到 login）；本文档描述的是
+  绕过 U-Boot 的 `-kernel` 直启路径
 - **gt911 双 Begin 伪影**：每次按下 monitor 会看到两次 begin 事件
   （根因 poll 间隙 INT idle 电平，已定位待修）；功能断言不受影响
 - **icm20608 数据面**：probe 通过，但数据读取的 SPI FIFO 字节打包
